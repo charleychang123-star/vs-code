@@ -1,0 +1,215 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root {
+  width: 100%; height: 100%; overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #111; color: #e0e0e0;
+}
+
+/* ── Layout ─────────────────────────────────────────── */
+
+.app { display: flex; width: 100%; height: 100%; }
+
+.canvas-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  position: relative;
+  overflow: hidden;
+}
+
+.canvas-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+
+/* ── Panel ───────────────────────────────────────────── */
+
+.panel {
+  width: 300px; min-width: 300px; height: 100%;
+  background: #1e1e1e;
+  border-right: 1px solid #2a2a2a;
+  display: flex; flex-direction: column;
+}
+
+.panel-header {
+  padding: 18px 16px 12px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: #555; border-bottom: 1px solid #2a2a2a;
+}
+
+.panel-content { flex: 1; overflow-y: auto; padding-bottom: 24px; }
+
+/* ── Sections ────────────────────────────────────────── */
+
+.panel-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid #242424;
+}
+
+.panel-section h3 {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: #555; margin-bottom: 11px;
+}
+
+/* ── Control rows ────────────────────────────────────── */
+
+.control-row {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px; gap: 8px;
+}
+
+.control-row label {
+  font-size: 12px; color: #999;
+  flex-shrink: 0; min-width: 70px;
+}
+
+.control-row input[type="color"] {
+  width: 36px; height: 26px;
+  border: 1px solid #3a3a3a; border-radius: 4px;
+  background: none; cursor: pointer; padding: 2px;
+}
+
+/* ── Stepped slider ──────────────────────────────────── */
+
+.stepped-group {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+}
+
+.stepped-group input[type="range"] {
+  flex: 1; height: 3px;
+  -webkit-appearance: none; appearance: none;
+  background: #383838; border-radius: 2px; outline: none;
+}
+
+.stepped-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: #c8c8c8; cursor: pointer; border: none;
+}
+
+.step-label {
+  display: flex; flex-direction: column;
+  align-items: flex-end; gap: 1px; min-width: 38px;
+}
+
+.step-val { font-size: 11px; color: #bbb; font-variant-numeric: tabular-nums; }
+.step-count { font-size: 9px; color: #555; font-variant-numeric: tabular-nums; }
+
+/* ── Segmented control ───────────────────────────────── */
+
+.segmented-control {
+  display: flex; gap: 2px;
+  background: #161616; border-radius: 5px; padding: 2px;
+}
+
+.segmented-control button {
+  flex: 1; padding: 5px 10px; font-size: 11px;
+  background: none; border: none; border-radius: 3px;
+  color: #666; cursor: pointer; transition: all 0.12s;
+  white-space: nowrap;
+}
+
+.segmented-control button.active { background: #3a3a3a; color: #eee; }
+.segmented-control button:hover:not(.active) { color: #aaa; }
+.segmented-control.small button { padding: 4px 8px; font-size: 11px; }
+
+/* ── Shape selector ──────────────────────────────────── */
+
+.shape-tabs {
+  display: flex; gap: 6px; margin-bottom: 10px;
+}
+
+.shape-tab {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; gap: 4px;
+}
+
+.shape-tab-label {
+  width: 100%; padding: 8px 0; font-size: 14px; font-weight: 600;
+  background: #272727; border: 1px solid #333; border-radius: 5px;
+  color: #777; cursor: pointer; transition: all 0.12s;
+}
+
+.shape-tab.selected .shape-tab-label {
+  background: #3a3a3a; border-color: #555; color: #eee;
+}
+
+.shape-tab-label.inactive {
+  color: #444;
+}
+
+.shape-tab-toggle {
+  font-size: 12px; background: none; border: none;
+  cursor: pointer; padding: 2px;
+  transition: color 0.12s;
+}
+
+.shape-tab-toggle.on  { color: #f0c060; }
+.shape-tab-toggle.off { color: #444; }
+
+.shape-hint {
+  font-size: 10px; color: #555; text-align: center;
+  margin-top: 4px; letter-spacing: 0.02em;
+}
+
+/* ── Copy layers ─────────────────────────────────────── */
+
+.copy-row {
+  border-top: 1px solid #2a2a2a;
+  padding-top: 8px; margin-top: 8px;
+}
+
+.copy-row-label {
+  display: block; font-size: 10px; color: #555;
+  margin-bottom: 6px; letter-spacing: 0.05em;
+}
+
+/* ── Toggle ──────────────────────────────────────────── */
+
+.toggle {
+  padding: 4px 12px; font-size: 11px;
+  background: #2a2a2a; border: 1px solid #3a3a3a;
+  border-radius: 4px; color: #777; cursor: pointer;
+  transition: all 0.12s;
+}
+.toggle.active { background: #3a3a3a; border-color: #555; color: #eee; }
+
+/* ── Export button ───────────────────────────────────── */
+
+.export-btn {
+  width: 100%; padding: 10px; font-size: 12px; font-weight: 600;
+  background: #2a2a2a; border: 1px solid #3a3a3a;
+  border-radius: 5px; color: #bbb; cursor: pointer;
+  transition: all 0.12s; letter-spacing: 0.04em;
+}
+.export-btn:hover { background: #333; border-color: #4a4a4a; color: #eee; }
+
+/* ── Canvas size toggle (overlay) ────────────────────── */
+
+.canvas-size-toggle {
+  position: absolute; top: 16px; right: 16px;
+  display: flex; gap: 2px;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px; padding: 3px;
+}
+
+.canvas-size-toggle button {
+  padding: 5px 10px; font-size: 11px; font-weight: 500;
+  background: none; border: none; border-radius: 4px;
+  color: rgba(255,255,255,0.4); cursor: pointer; transition: all 0.12s;
+}
+.canvas-size-toggle button.active {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.9);
+}
+.canvas-size-toggle button:hover:not(.active) {
+  color: rgba(255,255,255,0.65);
+}
