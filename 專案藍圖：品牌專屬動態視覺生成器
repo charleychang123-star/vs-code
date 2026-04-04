@@ -1,0 +1,78 @@
+專案藍圖：品牌專屬動態視覺生成器 (Brand Dynamic Visual Generator)
+1. 專案核心目標 (Project Objective)
+建立一個基於網頁介面（Web UI）的本地端視覺生成工具。透過可控的參數面板，系統化地產出符合品牌策略與視覺語彙的靜態圖像與動態影片。
+* 主要用途： 作為未來產出品牌視覺資產（底圖、動態海報、社群素材）的核心引擎，確保高度的視覺一致性與產出效率。
+* 核心視覺元素： 柔和漸層 (Soft Gradients)、同心幾何擴展 (Concentric Geometries)、細緻噪點紋理 (Grain/Noise)、漸進式模糊 (Progressive Layer Blur)。
+* 運行環境： 完全在本地端 (Localhost) 運行，以最大化利用本地 GPU 效能，確保高畫質與流暢的動態演算。
+2. 核心參考指標 (References & Benchmarks)
+* 視覺風格參考： 附圖是最終想產出的概念參考圖（多層次同心圓過渡、自發光漸層、高質感底片顆粒、光學模糊感）。
+* 介面 UI 參考： * tooooools.app（極簡、參數導向、專注於畫布本身）
+   * patterns-three（即時渲染、滑順的參數回饋體驗）
+3. 技術架構選型 (Tech Stack)
+為了確保動態輸出的流暢度（幀率）以及像素級的視覺細節（如漸進式模糊與噪點），本專案將放棄傳統的 CSS/SVG 濾鏡，全面採用 WebGL (GPU 渲染) 路線。
+* 基礎框架：React + Vite
+   * 負責建構網頁底層邏輯與元件化開發，提供極速的本地熱更新 (Hot-Reload) 開發體驗。
+* 渲染引擎：React Three Fiber (R3F) + Three.js
+   * 負責將網頁畫布轉化為 3D/WebGL 環境，讓瀏覽器能夠直接調用本地顯示卡 (GPU) 進行高效能算圖。
+* 視覺核心：GLSL Shaders (著色器)
+   * 圖像的靈魂所在。所有的漸層過渡 (Smoothstep)、幾何變形 (Simplex Noise)、漸進式模糊模擬與動態運算，皆直接編寫在 Shader 中處理。
+* 控制面板：Leva
+   * 用於快速生成右側的參數控制 UI，提供零延遲的視覺回饋。
+4. 開發階段拆解 (Development Roadmap)
+階段一：環境架設與基礎 UI (Environment & UI)
+* 安裝 Node.js 與 Vite 建立 React 專案。
+* 導入 R3F 建構全螢幕 WebGL 畫布。
+* 引入 Leva 建立基礎參數面板（包含：顏色陣列、層次數量、模糊度、噪點強度、動態速度）。
+階段二：核心視覺演算法 (Core Shader Development)
+* 撰寫 Fragment Shader 實作多層次的同心幾何圖案。
+* 利用數學公式 (Distance fields, Smoothstep) 處理邊緣的平滑漸變。
+* 綁定時間變數 (`uTime`) 讓幾何圖形產生呼吸感或水波擴散的動態。
+階段三：質感疊加與優化 (Texture & Rendering)
+* 在 Shader 頂層疊加動態的 Fractal Noise (噪點)，模擬底片/印刷顆粒感。
+* 開發漸進式模糊的視覺錯覺演算（基於距離動態調整邊緣的羽化程度）。
+* 測試色彩在不同漸層疊加下的融合模式 (Blend modes)。
+階段四：匯出與應用 (Export System)
+* 實作靜態圖片高畫質匯出功能 (Capture Canvas to PNG)，支援自訂解析度。
+* 實作動態影片錄製功能 (MediaRecorder 或 CCapture.js)，可錄製完美迴圈 (Seamless Loop) 的 MP4 或 WebM 檔案。
+5. 未來擴展方向 (Future Expansions)
+* 品牌預設集 (Presets System)： 將特定的參數組合（如特定專案的色彩與動態節奏）儲存為 JSON 格式，一鍵切換品牌風格。
+* 排版與動態字體 (Typography Integration)： 結合動態圖形設計 (Motion Graphics) 思維，在 WebGL 畫布上方疊加 HTML/CSS 網格系統，直接整合品牌專屬字體，產出完整的視覺海報。
+* 模組化 Shader 庫： 未來可輕易抽換底層的 Shader 程式碼，將「同心圓」替換成其他幾何或流體效果，而無須重寫介面與匯出系統。
+--
+品牌視覺生成器 V2 核心重構指引
+【階段目標與策略調整】
+* 策略轉向： 暫緩所有「動態/時間 (Time/Motion)」相關的變數與運算，先將 100% 的運算資源與注意力集中在**「靜態圖像的絕對視覺精準度」**。保留 WebGL/React 框架以便未來重啟擴充。
+* 核心痛點： 目前的漸層流於單調的明暗同心圓疊加。我們需要重構 Fragment Shader 中的色彩演算法，還原出具有「光學深度」的三段式獨立徑向漸層，並增加幾何圖形的多樣性與佈局控制。
+模塊一：漸層演算法重構 (Gradient System Overhaul) 🔴 最優先
+請徹底捨棄現有的明暗疊加邏輯，改用「基於距離的三段式徑向漸層 (3-Stop Radial Gradient)」加上「多組件方向控制」。
+1. 自定義三色漸層對映 (3-Color Mapping)：
+   * 不再只依賴兩色明暗。請在 Shader 中建立基於核心距離（Distance field）的混色（`mix`）機制。
+   * 色彩結構定義：
+      * `Color A` (中心點 0%)：深色 / 飽和度中高（例：`#D98026`）
+      * `Color B` (過渡帶 55%)：淺色 / 明度高、飽和度偏低（例：`#F9D286`）
+      * `Color C` (邊緣與底色 100%)：畫布底色（例：`#FEF6E7`）
+   * 技術指引： 請使用 `smoothstep` 搭配兩次 `mix` 函數，精準控制這三個顏色在半徑上的過渡位置。
+2. 群組與漸層方向性 (Group & Directional Angle)：
+   * 為了還原參考圖中「上下鏡像」或「相向交融」的視覺，我們需要將畫面上的圖形分為至少兩個群組 (Group A / Group B)。
+   * 請在 UI 新增「漸層起始角度 (Gradient Angle)」。例如：Group A 設定為 180 度（由上往下漸變），Group B 設定為 0 度（由下往上漸變）。
+   * 技術指引： 在計算 UV 距離時，引入旋轉矩陣或角度偏移，讓徑向漸層的中心點或擴散方向產生方向性。
+模塊二：幾何與佈局功能擴充 (Geometry & Layout Expansions)
+請在 Leva UI 控制面板中，擴充以下幾何操控變數，並將其連結至 Shader：
+1. 圖形數量與群組 (Shape Count)：
+   * 新增 UI 選項：允許單一群組內產生 1~5 個幾何圖形。
+2. 幾何形狀切換 (Shape Type)：
+   * 新增 UI 下拉選單 (Select)：除了原有的 `Circle`（圓形），新增 `Square`（帶圓角的方形）、`Curve/Blob`（流體曲線/水波形）。
+   * 技術指引： 使用 SDF (Signed Distance Fields) 來繪製不同的形狀，透過切換不同的 SDF 公式來改變外觀。
+3. 長寬比例控制 (Aspect Ratio / Scale X-Y)：
+   * 新增 UI 滑桿：可以一次性拉伸畫面上所有幾何圖形的長寬比（例如把圓形壓扁成橢圓）。這對於調整版面佈局非常重要。
+4. 漸進式佈局 (Progressive Scale Layout)：
+   * 當選擇多個圖形（如 3 個）時，它們不應只是原地重疊。
+   * 新增 UI 參數 `Progressive Scale` 與 `Progressive Offset`。讓圖形可以呈現「由小漸變到大」並在 Y 軸或 X 軸上產生連續的位移排列（類似千層糕或扇形展開的佈局）。
+模塊三：UI 面板項目整理 (Leva UI Structure)
+請將 Leva 面板重新分組（Folder）以保持乾淨：
+* 📂 色彩系統 (Color System): Color A, Color B, Color C (Canvas)
+* 📂 漸層與方向 (Gradient & Angle): 過渡位置點 (0~1)、Group A 角度、Group B 角度
+* 📂 幾何外觀 (Geometry Base): 形狀類型、圖形數量(1-5)、長寬比例
+* 📂 漸進佈局 (Layout): 漸進縮放比、漸進座標位移
+* 📂 質感 (Texture): 噪點強度、邊緣羽化 (Blur/Smoothstep 範圍)
+* 🔲 匯出 PNG 按鈕
