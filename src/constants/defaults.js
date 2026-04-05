@@ -23,7 +23,8 @@ export const DEFAULT_PARAMS = {
   // Global copy layer params
   copyCount: 0,
   copySpacing: 0.15,
-  copyDir: 'bottom',         // 'top' | 'bottom' | 'left' | 'right' | 'center'
+  copyDir: 'bottom',         // 'top' | 'bottom' | 'left' | 'right' | 'center' | 'custom'
+  copyDirAngle: 90,          // degrees, 0=top, 90=right, 180=bottom, 270=left
   copyScaleStep: 130,
   copyOpacityStep: 70,
   // Global blur params
@@ -37,7 +38,18 @@ export const DEFAULT_PARAMS = {
   },
 };
 
-export const DIR_OPTIONS = ['top', 'bottom', 'left', 'right', 'center'];
-export const DIR_LABELS  = { top: '由上', bottom: '由下', left: '由左', right: '由右', center: '中間' };
+export const COLOR_PRESETS = [
+  { name: '金橙', colorA: '#D98026', colorB: '#FBCA51' },
+  { name: '琥珀', colorA: '#D98026', colorB: '#F9D286' },
+  { name: '珊瑚', colorA: '#CB8067', colorB: '#EABFA1' },
+  { name: '沙棕', colorA: '#B07A65', colorB: '#D9C5A8' },
+  { name: '灰綠', colorA: '#839B8A', colorB: '#D6D2B3' },
+  { name: '海沫', colorA: '#7A96A6', colorB: '#B6D0C4' },
+  { name: '蒼藍', colorA: '#7E93BE', colorB: '#B6C9D0' },
+  { name: '薄霧', colorA: '#A89FAD', colorB: '#E5C3C6' },
+];
+
+export const DIR_OPTIONS = ['top', 'bottom', 'left', 'right', 'center', 'custom'];
+export const DIR_LABELS  = { top: '由上', bottom: '由下', left: '由左', right: '由右', center: '中間', custom: '自訂' };
 // Flip map: top↔bottom, left↔right, center stays
 export const FLIP_DIR    = [1, 0, 3, 2, 4];

@@ -1,16 +1,15 @@
 import SteppedSlider from './SteppedSlider';
 import { DIR_LABELS } from '../../constants/defaults';
 
-const DIR_OPTIONS_UI = ['top', 'bottom', 'left', 'right', 'center'];
+const DIR_OPTIONS_UI = ['top', 'bottom', 'left', 'right', 'center', 'custom'];
 
 export default function CopyLayersSection({ params, updateGlobal }) {
-  const { copyCount, copyDir, copySpacing, copyScaleStep, copyOpacityStep } = params;
+  const { copyCount, copyDir, copyDirAngle, copySpacing, copyScaleStep, copyOpacityStep } = params;
 
   return (
     <section className="panel-section">
       <h3>Copy Layers</h3>
 
-      {/* Copy count: 0–6 */}
       <div className="control-row">
         <label>層數</label>
         <div className="segmented-control small">
@@ -28,7 +27,6 @@ export default function CopyLayersSection({ params, updateGlobal }) {
 
       {copyCount > 0 && (
         <>
-          {/* Direction — includes "中間" (center) */}
           <div className="control-row">
             <label>方向</label>
             <div className="segmented-control small">
@@ -44,7 +42,26 @@ export default function CopyLayersSection({ params, updateGlobal }) {
             </div>
           </div>
 
-          {/* Spacing (0 = all anchored at edge, stack neatly) */}
+          {copyDir === 'custom' && (
+            <div className="control-row">
+              <label>角度</label>
+              <div className="angle-input-group">
+                <input
+                  type="number"
+                  className="angle-input"
+                  min={0}
+                  max={359}
+                  value={copyDirAngle}
+                  onChange={e => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v)) updateGlobal('copyDirAngle', ((v % 360) + 360) % 360);
+                  }}
+                />
+                <span className="angle-unit">°</span>
+              </div>
+            </div>
+          )}
+
           <SteppedSlider
             label="間距"
             stepsKey="spacing"
@@ -52,8 +69,6 @@ export default function CopyLayersSection({ params, updateGlobal }) {
             onChange={v => updateGlobal('copySpacing', v)}
             format={v => v.toFixed(2)}
           />
-
-          {/* Multiplicative step values */}
           <SteppedSlider
             label="尺寸步進"
             stepsKey="copyScaleStep"

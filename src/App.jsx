@@ -39,6 +39,7 @@ function buildUniforms(params) {
   const copyCount      = new Int32Array(3);
   const copySpacing    = new Float32Array(3);
   const copyDir        = new Int32Array(3);
+  const copyDirAngle   = new Float32Array(3);
   const copyScale      = new Float32Array(3 * MAX_COPIES);
   const copyOpacity    = new Float32Array(3 * MAX_COPIES);
   const blurEnabled    = new Int32Array(3);
@@ -55,10 +56,14 @@ function buildUniforms(params) {
     copyCount[i]    = params.copyCount;
     copySpacing[i]  = params.copySpacing;
 
-    const baseDir      = DIR_OPTIONS.indexOf(params.copyDir);
+    const baseDir      = params.copyDir === 'custom' ? 5 : DIR_OPTIONS.indexOf(params.copyDir);
     const isFlipped    = s.flip === true;
-    const effectiveDir = isFlipped ? FLIP_DIR[baseDir] : baseDir;
-    copyDir[i] = effectiveDir;
+    // Flip only applies to axis-aligned dirs (0-3); custom angle and center are unaffected
+    const effectiveDir = (isFlipped && baseDir <= 3) ? FLIP_DIR[baseDir] : baseDir;
+    copyDir[i]      = effectiveDir;
+    copyDirAngle[i] = isFlipped && baseDir === 5
+      ? ((params.copyDirAngle + 180) % 360)
+      : params.copyDirAngle;
     blurDir[i] = effectiveDir;   // blur always follows copy direction
 
     computedCopyScale.forEach((v, c)   => { copyScale[i * MAX_COPIES + c]   = v; });
@@ -90,6 +95,7 @@ function buildUniforms(params) {
     uCopyCount:      { type: '1iv', value: copyCount },
     uCopySpacing:    { type: '1fv', value: copySpacing },
     uCopyDir:        { type: '1iv', value: copyDir },
+    uCopyDirAngle:   { type: '1fv', value: copyDirAngle },
     uCopyScale:      { type: '1fv', value: copyScale },
     uCopyOpacity:    { type: '1fv', value: copyOpacity },
     uCopyScaleStep:  { type: '1f',  value: scaleBase },

@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import SteppedSlider from './SteppedSlider';
+import { COLOR_PRESETS } from '../../constants/defaults';
 
 const GRADIENT_OPTIONS = [
   { value: 'radial',  label: '放射' },
@@ -6,10 +8,47 @@ const GRADIENT_OPTIONS = [
   { value: 'reverse', label: '翻轉' },
 ];
 
+const PRESET_BG = '#FEF6E7';
+
 export default function ColorSection({ params, updateGlobal }) {
+  const [open, setOpen] = useState(false);
+
+  function applyPreset(p) {
+    updateGlobal('colorA', p.colorA);
+    updateGlobal('colorB', p.colorB);
+    updateGlobal('colorC', PRESET_BG);
+  }
+
   return (
     <section className="panel-section">
-      <h3>色彩系統</h3>
+      <div className="color-section-header">
+        <h3>色彩系統</h3>
+        <button
+          className={`preset-toggle${open ? ' active' : ''}`}
+          onClick={() => setOpen(v => !v)}
+        >
+          預設配色
+        </button>
+      </div>
+
+      {open && (
+        <div className="preset-swatches">
+          {COLOR_PRESETS.map(p => (
+            <button
+              key={p.name}
+              className="preset-swatch"
+              title={p.name}
+              style={{
+                background: `radial-gradient(circle at 40% 40%, ${p.colorA} 0%, ${p.colorA} 28%, ${p.colorB} 65%, ${p.colorB} 100%)`,
+              }}
+              onClick={() => applyPreset(p)}
+            >
+              <span className="preset-swatch-name">{p.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="control-row">
         <label>Color A（中心）</label>
         <input type="color" value={params.colorA}

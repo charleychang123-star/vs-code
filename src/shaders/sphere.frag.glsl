@@ -26,7 +26,8 @@ uniform float uShapeWarp[3];
 // ── Copy layer arrays (shape*6+copy) ─────────
 uniform int   uCopyCount[3];
 uniform float uCopySpacing[3];
-uniform int   uCopyDir[3];       // 0=top 1=bottom 2=left 3=right 4=center
+uniform int   uCopyDir[3];       // 0=top 1=bottom 2=left 3=right 4=center 5=custom angle
+uniform float uCopyDirAngle[3];  // degrees, used when dir==5. 0=top, 90=right, 180=bottom, 270=left
 uniform float uCopyScale[18];
 uniform float uCopyOpacity[18];
 uniform float uCopyScaleStep;    // >1 = copies grow; <1 = copies shrink
@@ -89,13 +90,20 @@ vec3 gradientMap(float dist) {
 
 // Directional gradient distance [0,1] along a given direction axis.
 // 0 = warm end (colorA side), 1 = cool/bg end (colorC side).
-float dirGradDist(vec2 uv, vec2 pos, float r, int dir) {
+float dirGradDist(vec2 uv, vec2 pos, float r, int dir, float angle) {
   float d;
-  if      (dir == 0) d = (pos.y - uv.y) / r;                 // top: warm at bottom
-  else if (dir == 1) d = (uv.y - pos.y) / r;                 // bottom: warm at top
-  else if (dir == 2) d = (pos.x - uv.x) * uCanvasAspect / r; // left: warm at right
-  else if (dir == 3) d = (uv.x - pos.x) * uCanvasAspect / r; // right: warm at left
-  else               return sphereSDF(uv, pos, r, 1.0);       // center: radial fallback
+  if      (dir == 0) d = (pos.y - uv.y) / r;                  // top: warm at bottom
+  else if (dir == 1) d = (uv.y - pos.y) / r;                  // bottom: warm at top
+  else if (dir == 2) d = (pos.x - uv.x) * uCanvasAspect / r;  // left: warm at right
+  else if (dir == 3) d = (uv.x - pos.x) * uCanvasAspect / r;  // right: warm at left
+  else if (dir == 5) {
+    // Custom angle: 0°=copies spread top, 90°=right, 180°=bottom, 270°=left
+    float rad = angle * 3.14159265359 / 180.0;
+    float dx = (uv.x - pos.x) * uCanvasAspect;
+    float dy =  uv.y - pos.y;
+    d = (dx * sin(rad) - dy * cos(rad)) / r;
+  }
+  else               return sphereSDF(uv, pos, r, 1.0);        // center: radial fallback
   return clamp(d * 0.5 + 0.5, 0.0, 1.0);
 }
 
@@ -110,18 +118,20 @@ void blendElement(inout vec3 color, float sdfDist, float gradDist, float opacity
 
 // Return the gradient distance for a given element center + size,
 // respecting the current gradient mode.
-float computeGradDist(vec2 uv, vec2 pos, float r, float sAspect, int dir) {
+float computeGradDist(vec2 uv, vec2 pos, float r, float sAspect, int dir, float angle) {
   if (uGradientMode == 0) {
     return sphereSDF(uv, pos, r, sAspect);
   }
-  // reverse: flip direction axis by XOR with 1 (top↔bottom, left↔right; center stays)
+  // reverse: flip direction axis by XOR with 1 (top↔bottom, left↔right; center/custom unchanged)
   int gDir = (uGradientMode == 2 && dir <= 3) ? (dir ^ 1) : dir;
-  return dirGradDist(uv, pos, r, gDir);
+  // For custom angle reverse: rotate angle 180°
+  float gAngle = (uGradientMode == 2 && dir == 5) ? mod(angle + 180.0, 360.0) : angle;
+  return dirGradDist(uv, pos, r, gDir, gAngle);
 }
 
 // Render one copy layer with edge-anchored alignment
 void renderCopy(inout vec3 color, vec2 uv, vec2 pos, float baseR, float sAspect,
-                int copyCount, float spacing, int dir, int s, int c) {
+                int copyCount, float spacing, int dir, float angle, int s, int c) {
   if (c >= copyCount) return;
 
   int   idx    = s * 6 + c;
@@ -130,18 +140,24 @@ void renderCopy(inout vec3 color, vec2 uv, vec2 pos, float baseR, float sAspect,
   float cR     = baseR * cScale;
 
   // Anchor the edge of each copy at the base edge facing the copy direction.
-  // This ensures all copies align at their nearest edge to the original (spacing=0 stacks neatly).
   float scaleDiff = cR - baseR;
   float stepDist  = spacing * float(c + 1);
   vec2  cPos = pos;
-  if      (dir == 0) { cPos.y -= scaleDiff;                            cPos.y -= stepDist; }
-  else if (dir == 1) { cPos.y += scaleDiff;                            cPos.y += stepDist; }
-  else if (dir == 2) { cPos.x -= scaleDiff * sAspect / uCanvasAspect; cPos.x -= stepDist / uCanvasAspect; }
-  else if (dir == 3) { cPos.x += scaleDiff * sAspect / uCanvasAspect; cPos.x += stepDist / uCanvasAspect; }
-  // dir == 4 (center): cPos = pos, no offset
+  if      (dir == 0) { cPos.y -= scaleDiff + stepDist; }
+  else if (dir == 1) { cPos.y += scaleDiff + stepDist; }
+  else if (dir == 2) { cPos.x -= (scaleDiff * sAspect + stepDist) / uCanvasAspect; }
+  else if (dir == 3) { cPos.x += (scaleDiff * sAspect + stepDist) / uCanvasAspect; }
+  else if (dir == 5) {
+    // Custom angle: decompose offset into UV X/Y components (aspect-corrected)
+    float rad = angle * 3.14159265359 / 180.0;
+    float total = scaleDiff + stepDist;
+    cPos.x += sin(rad) * total / uCanvasAspect;
+    cPos.y -= cos(rad) * total;
+  }
+  // dir == 4 (center): no offset
 
   float sdfDist  = sphereSDF(uv, cPos, cR, sAspect);
-  float gradDist = computeGradDist(uv, cPos, cR, sAspect, dir);
+  float gradDist = computeGradDist(uv, cPos, cR, sAspect, dir, angle);
   blendElement(color, sdfDist, gradDist, cAlpha);
 }
 
@@ -160,23 +176,24 @@ void main() {
     int   copyCount = uCopyCount[s];
     float spacing   = uCopySpacing[s];
     int   dir       = uCopyDir[s];
+    float angle     = uCopyDirAngle[s];
 
     vec2 uv = warpUV(vUV, uShapeWarp[s]);
 
     float baseSDF  = sphereSDF(uv, pos, baseR, sAspect);
-    float baseGrad = computeGradDist(uv, pos, baseR, sAspect, dir);
+    float baseGrad = computeGradDist(uv, pos, baseR, sAspect, dir, angle);
 
     if (uCopyScaleStep >= 1.0) {
       // Copies grow outward → render largest (c=5) first (deepest behind), base on top
       for (int c = 5; c >= 0; c--) {
-        renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, s, c);
+        renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, angle, s, c);
       }
       blendElement(color, baseSDF, baseGrad, 1.0);
     } else {
       // Copies shrink → base behind, copies in front; c=0 (largest copy) rendered last = on top
       blendElement(color, baseSDF, baseGrad, 1.0);
       for (int c = 5; c >= 0; c--) {
-        renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, s, c);
+        renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, angle, s, c);
       }
     }
   }
