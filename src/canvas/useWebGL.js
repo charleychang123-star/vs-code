@@ -63,14 +63,14 @@ function deleteFBO(gl, fboObj) {
 // ─────────────────────────────────────────────────────
 // Hook
 // ─────────────────────────────────────────────────────
-export function useWebGL({ sceneFragSrc, blurHFragSrc, blurVFragSrc }) {
+export function useWebGL({ sceneFragSrc, blurHFragSrc, blurVFragSrc, warpDirFragSrc }) {
   const canvasRef = useRef(null);
   const st = useRef({
     gl: null,
     vao: null,
-    programs: { scene: null, blurH: null, blurV: null },
-    ulocs: { scene: {}, blurH: {}, blurV: {} }, // uniform location cache
-    fbos: { a: null, b: null },
+    programs: { scene: null, blurH: null, blurV: null, warpDir: null },
+    ulocs: { scene: {}, blurH: {}, blurV: {}, warpDir: {} },
+    fbos: { a: null, b: null, c: null },
     size: { w: 0, h: 0 },
   });
 
@@ -119,6 +119,15 @@ export function useWebGL({ sceneFragSrc, blurHFragSrc, blurVFragSrc }) {
     st.current.ulocs.blurV = {};
   }, [blurHFragSrc, blurVFragSrc]);
 
+  // ── Build warpDir program ────────────────────────────
+  useEffect(() => {
+    const { gl } = st.current;
+    if (!gl || !warpDirFragSrc) return;
+    if (st.current.programs.warpDir) gl.deleteProgram(st.current.programs.warpDir);
+    st.current.programs.warpDir = buildProgram(gl, warpDirFragSrc);
+    st.current.ulocs.warpDir = {};
+  }, [warpDirFragSrc]);
+
   // ── Resize + FBO management ──────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -140,8 +149,10 @@ export function useWebGL({ sceneFragSrc, blurHFragSrc, blurVFragSrc }) {
 
       deleteFBO(gl, st.current.fbos.a);
       deleteFBO(gl, st.current.fbos.b);
+      deleteFBO(gl, st.current.fbos.c);
       st.current.fbos.a = createFBO(gl, w, h);
       st.current.fbos.b = createFBO(gl, w, h);
+      st.current.fbos.c = createFBO(gl, w, h);
     };
 
     const obs = new ResizeObserver(resize);
@@ -170,10 +181,11 @@ export function useWebGL({ sceneFragSrc, blurHFragSrc, blurVFragSrc }) {
     }
   }, []);
 
-  // ── Render: 3-pass pipeline ──────────────────────────
-  // sceneUniforms: { name: { type, value } }
-  // blurUniforms:  same structure (pass null to skip blur)
-  const render = useCallback((sceneUniforms, blurUniforms) => {
+  // ── Render: up to 4-pass pipeline ───────────────────
+  // sceneUniforms:   { name: { type, value } }
+  // blurUniforms:    same structure (pass null to skip blur)
+  // warpDirUniforms: same structure (pass null to skip dir-warp)
+  const render = useCallback((sceneUniforms, blurUniforms, warpDirUniforms) => {
     const { gl, programs, fbos, size } = st.current;
     if (!gl || !programs.scene) return;
     const { w, h } = size;
@@ -185,41 +197,64 @@ export function useWebGL({ sceneFragSrc, blurHFragSrc, blurVFragSrc }) {
       }
     };
 
-    const hasBlur = programs.blurH && programs.blurV && blurUniforms && fbos.a && fbos.b;
+    const hasBlur    = programs.blurH && programs.blurV && blurUniforms && fbos.a && fbos.b;
+    const hasWarpDir = programs.warpDir && warpDirUniforms && fbos.c;
 
-    // ── Pass 1: scene → FBO A (or screen if no blur) ──
-    gl.bindFramebuffer(gl.FRAMEBUFFER, hasBlur ? fbos.a.fbo : null);
+    // Determine intermediate target for scene pass
+    const sceneTarget = (hasBlur || hasWarpDir) ? fbos.a.fbo : null;
+
+    // ── Pass 1: scene → FBO A (or screen) ───────────
+    gl.bindFramebuffer(gl.FRAMEBUFFER, sceneTarget);
     gl.viewport(0, 0, w, h);
     gl.useProgram(programs.scene);
     setAll('scene', sceneUniforms);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    if (!hasBlur) return;
+    if (!hasBlur && !hasWarpDir) return;
 
     const blurBase = {
-      uResolution:  { type: '2f', value: [w, h] },
+      uResolution:   { type: '2f', value: [w, h] },
       uCanvasAspect: { type: '1f', value: w / h },
-      uSceneTex:    { type: '1i', value: 0 },
-      ...blurUniforms,
+      uSceneTex:     { type: '1i', value: 0 },
+      ...(blurUniforms || {}),
     };
 
-    // ── Pass 2: H-blur (FBO A → FBO B) ──────────────
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbos.b.fbo);
-    gl.viewport(0, 0, w, h);
-    gl.useProgram(programs.blurH);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, fbos.a.tex);
-    setAll('blurH', blurBase);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if (hasBlur) {
+      // ── Pass 2: H-blur (FBO A → FBO B) ────────────
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbos.b.fbo);
+      gl.viewport(0, 0, w, h);
+      gl.useProgram(programs.blurH);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, fbos.a.tex);
+      setAll('blurH', blurBase);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    // ── Pass 3: V-blur (FBO B → screen) ─────────────
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, w, h);
-    gl.useProgram(programs.blurV);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, fbos.b.tex);
-    setAll('blurV', blurBase);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+      // ── Pass 3: V-blur (FBO B → FBO A or screen) ──
+      const vBlurTarget = hasWarpDir ? fbos.a.fbo : null;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, vBlurTarget);
+      gl.viewport(0, 0, w, h);
+      gl.useProgram(programs.blurV);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, fbos.b.tex);
+      setAll('blurV', blurBase);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    if (hasWarpDir) {
+      // ── Pass 4: dir-warp (FBO A → screen) ─────────
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, w, h);
+      gl.useProgram(programs.warpDir);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, fbos.a.tex);
+      const warpBase = {
+        uResolution: { type: '2f', value: [w, h] },
+        uSceneTex:   { type: '1i', value: 0 },
+        ...warpDirUniforms,
+      };
+      setAll('warpDir', warpBase);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
   }, [_setU]);
 
   const getCanvas = useCallback(() => canvasRef.current, []);

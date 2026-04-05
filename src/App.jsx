@@ -5,9 +5,11 @@ import CanvasSizeToggle from './ui/controls/CanvasSizeToggle';
 import ShapePlacementMap from './ui/controls/ShapePlacementMap';
 import sphereFrag from './shaders/sphere.frag.glsl?raw';
 import { DEFAULT_PARAMS, CANVAS_SIZES, DIR_OPTIONS, FLIP_DIR } from './constants/defaults';
+import { useHistory } from './hooks/useHistory';
 
 const MAX_COPIES = 6;
 const GRADIENT_MODES = { radial: 0, follow: 1, reverse: 2 };
+const SHAPE_TYPES = ['circle', 'square', 'diamond', 'blob'];
 
 // ── Helpers ──────────────────────────────────────────
 function hexToGL(hex) {
@@ -27,11 +29,10 @@ function buildUniforms(params) {
 
   const scaleBase = params.copyScaleStep / 100;
   const opacBase  = params.copyOpacityStep / 100;
-  // Opacity for copies: c=0 always gets the highest (pow^1), decreasing outward.
-  // For < 100% case, z-order in shader puts c=0 on top — so c=0 being most opaque is correct.
   const computedCopyScale   = Array.from({ length: MAX_COPIES }, (_, i) => Math.pow(scaleBase, i + 1));
   const computedCopyOpacity = Array.from({ length: MAX_COPIES }, (_, i) => Math.pow(opacBase, i + 1));
 
+  const shapeType      = new Int32Array(3);
   const shapePos       = new Float32Array(6);
   const shapeRadius    = new Float32Array(3);
   const shapeAspect    = new Float32Array(3);
@@ -48,6 +49,7 @@ function buildUniforms(params) {
   const shapeMaxRadius = new Float32Array(3);
 
   activeShapes.forEach((s, i) => {
+    shapeType[i]        = SHAPE_TYPES.indexOf(params.shapeType);
     shapePos[i * 2]     = s.posX;
     shapePos[i * 2 + 1] = s.posY;
     shapeRadius[i]  = params.radius;
@@ -58,13 +60,12 @@ function buildUniforms(params) {
 
     const baseDir      = params.copyDir === 'custom' ? 5 : DIR_OPTIONS.indexOf(params.copyDir);
     const isFlipped    = s.flip === true;
-    // Flip only applies to axis-aligned dirs (0-3); custom angle and center are unaffected
     const effectiveDir = (isFlipped && baseDir <= 3) ? FLIP_DIR[baseDir] : baseDir;
     copyDir[i]      = effectiveDir;
     copyDirAngle[i] = isFlipped && baseDir === 5
       ? ((params.copyDirAngle + 180) % 360)
       : params.copyDirAngle;
-    blurDir[i] = effectiveDir;   // blur always follows copy direction
+    blurDir[i] = effectiveDir;
 
     computedCopyScale.forEach((v, c)   => { copyScale[i * MAX_COPIES + c]   = v; });
     computedCopyOpacity.forEach((v, c) => { copyOpacity[i * MAX_COPIES + c] = v; });
@@ -72,7 +73,6 @@ function buildUniforms(params) {
     blurEnabled[i] = params.blurEnabled ? 1 : 0;
     blurStr[i]     = params.blurStr;
 
-    // Bounding radius for blur masking: covers base + largest copy + spacing offsets
     const maxCopyScale = params.copyCount > 0 ? Math.pow(scaleBase, params.copyCount) : 1;
     const maxR = Math.max(params.radius, params.radius * maxCopyScale)
                + params.copyCount * params.copySpacing;
@@ -88,6 +88,7 @@ function buildUniforms(params) {
     uEdgeSoft:       { type: '1f',  value: params.edgeSoft / 100 },
     uGrain:          { type: '1f',  value: params.grain },
     uShapeCount:     { type: '1i',  value: count },
+    uShapeType:      { type: '1iv', value: shapeType },
     uShapePos:       { type: '2fv', value: shapePos },
     uShapeRadius:    { type: '1fv', value: shapeRadius },
     uShapeAspect:    { type: '1fv', value: shapeAspect },
@@ -99,6 +100,10 @@ function buildUniforms(params) {
     uCopyScale:      { type: '1fv', value: copyScale },
     uCopyOpacity:    { type: '1fv', value: copyOpacity },
     uCopyScaleStep:  { type: '1f',  value: scaleBase },
+    uBiWarpStr:      { type: '1f',  value: params.biWarpEnabled ? params.biWarpStr : 0 },
+    uBiWarpXOn:      { type: '1i',  value: (params.biWarpEnabled && params.biWarpXOn) ? 1 : 0 },
+    uBiWarpYOn:      { type: '1i',  value: (params.biWarpEnabled && params.biWarpYOn) ? 1 : 0 },
+    uDirWarpEnabled: { type: '1i',  value: params.dirWarpEnabled ? 1 : 0 },
   };
 
   const blurUniforms = {
@@ -111,14 +116,20 @@ function buildUniforms(params) {
     uBlurStr:        { type: '1fv', value: blurStr },
   };
 
+  const warpDirUniforms = {
+    uDirWarpEnabled: { type: '1i', value: params.dirWarpEnabled ? 1 : 0 },
+    uDirWarpAngle:   { type: '1f', value: params.dirWarpAngle },
+    uDirWarpStr:     { type: '1f', value: params.dirWarpStr },
+  };
+
   const hasBlur = params.blurEnabled && count > 0;
 
-  return { sceneUniforms, blurUniforms, hasBlur };
+  return { sceneUniforms, blurUniforms, warpDirUniforms, hasBlur };
 }
 
 // ── App ───────────────────────────────────────────────
 export default function App() {
-  const [params, setParams] = useState(DEFAULT_PARAMS);
+  const { params, updateGlobal, updateShape, undo, redo, canUndo, canRedo } = useHistory(DEFAULT_PARAMS);
   const containerRef = useRef(null);
   const [displaySize, setDisplaySize] = useState({ w: 800, h: 450 });
 
@@ -140,21 +151,6 @@ export default function App() {
     return () => obs.disconnect();
   }, [params.canvasSize]);
 
-  // ── State updaters ──────────────────────────────────
-  const updateGlobal = useCallback((key, value) => {
-    setParams(prev => ({ ...prev, [key]: value }));
-  }, []);
-
-  const updateShape = useCallback((shapeKey, field, value) => {
-    setParams(prev => ({
-      ...prev,
-      shapes: {
-        ...prev.shapes,
-        [shapeKey]: { ...prev.shapes[shapeKey], [field]: value },
-      },
-    }));
-  }, []);
-
   // ── Export ───────────────────────────────────────────
   const handleExport = useCallback(() => {
     const wrapper = document.querySelector('.canvas-wrapper');
@@ -172,7 +168,7 @@ export default function App() {
   }, [params.canvasSize]);
 
   // ── Build uniforms ───────────────────────────────────
-  const { sceneUniforms, blurUniforms, hasBlur } = buildUniforms(params);
+  const { sceneUniforms, blurUniforms, warpDirUniforms, hasBlur } = buildUniforms(params);
 
   return (
     <div className="app">
@@ -181,6 +177,10 @@ export default function App() {
         updateGlobal={updateGlobal}
         updateShape={updateShape}
         onExport={handleExport}
+        undo={undo}
+        redo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
       />
 
       <div className="canvas-area" ref={containerRef}>
@@ -193,6 +193,7 @@ export default function App() {
             sceneUniforms={sceneUniforms}
             blurUniforms={blurUniforms}
             hasBlur={hasBlur}
+            warpDirUniforms={warpDirUniforms}
           />
         </div>
 

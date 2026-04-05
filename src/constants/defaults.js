@@ -16,10 +16,20 @@ export const DEFAULT_PARAMS = {
   edgeSoft: 20,             // 0 = crisp edge, 100 = full cloud feather
   // Global texture
   grain: 15,
-  // Global sphere params (apply to all active shapes)
+  // Shape type
+  shapeType: 'circle',   // 'circle' | 'square' | 'diamond' | 'blob'
+  // Global shape params (apply to all active shapes)
   radius: 0.8,
   aspect: 1.0,
   warp: 0,
+  // Filter Library
+  biWarpEnabled: false,
+  biWarpStr: 40,
+  biWarpXOn: true,
+  biWarpYOn: true,
+  dirWarpEnabled: false,
+  dirWarpStr: 50,
+  dirWarpAngle: 90,
   // Global copy layer params
   copyCount: 0,
   copySpacing: 0.15,

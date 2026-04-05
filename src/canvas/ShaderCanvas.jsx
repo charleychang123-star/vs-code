@@ -1,38 +1,39 @@
 import { useEffect } from 'react';
 import { useWebGL } from './useWebGL';
-import blurHSrc from '../shaders/blur-h.frag.glsl?raw';
-import blurVSrc from '../shaders/blur-v.frag.glsl?raw';
+import blurHSrc    from '../shaders/blur-h.frag.glsl?raw';
+import blurVSrc    from '../shaders/blur-v.frag.glsl?raw';
+import warpDirSrc  from '../shaders/warp-dir.frag.glsl?raw';
 
 export default function ShaderCanvas({
   fragmentSource,
   sceneUniforms,
   blurUniforms,
   hasBlur,
+  warpDirUniforms,
 }) {
-  const { canvasRef, render, getCanvas } = useWebGL({
-    sceneFragSrc: fragmentSource,
-    blurHFragSrc: hasBlur ? blurHSrc : null,
-    blurVFragSrc: hasBlur ? blurVSrc : null,
+  const { canvasRef, render } = useWebGL({
+    sceneFragSrc:   fragmentSource,
+    blurHFragSrc:   hasBlur ? blurHSrc : null,
+    blurVFragSrc:   hasBlur ? blurVSrc : null,
+    warpDirFragSrc: warpDirSrc,
   });
 
-  // Render loop
   useEffect(() => {
     let rafId;
     const loop = () => {
       const canvas = canvasRef.current;
       if (canvas && canvas.width > 0) {
-        // Inject canvas-specific uniforms
         const full = {
           uCanvasAspect: { type: '1f', value: canvas.width / canvas.height },
           ...sceneUniforms,
         };
-        render(full, hasBlur ? blurUniforms : null);
+        render(full, hasBlur ? blurUniforms : null, warpDirUniforms);
       }
       rafId = requestAnimationFrame(loop);
     };
     rafId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafId);
-  }, [render, sceneUniforms, blurUniforms, hasBlur, canvasRef]);
+  }, [render, sceneUniforms, blurUniforms, hasBlur, warpDirUniforms, canvasRef]);
 
   return (
     <canvas

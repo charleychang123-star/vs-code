@@ -11,6 +11,8 @@ export const STEPS = {
   copyOpacityStep: [10, 25, 40, 55, 70, 85, 100],
   blurStr:     [0.4, 0.8, 1.5, 2.5, 4, 6, 9, 14, 20, 28, 36],
   grain:       [0, 8, 15, 25, 38, 55],
+  biWarpStr:   [5, 10, 20, 35, 50, 70, 90],
+  dirWarpStr:  [5, 10, 20, 35, 50, 70, 90],
 };
 
 export function nearestStepIndex(steps, value) {

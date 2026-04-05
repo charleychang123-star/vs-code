@@ -18,10 +18,17 @@ uniform float uCanvasAspect;
 
 // ── Shape arrays (up to 3) ───────────────────
 uniform int   uShapeCount;
+uniform int   uShapeType[3];    // 0=circle 1=square 2=diamond 3=blob
 uniform vec2  uShapePos[3];
 uniform float uShapeRadius[3];
 uniform float uShapeAspect[3];
 uniform float uShapeWarp[3];
+
+// ── Filter Library ───────────────────────────
+uniform float uBiWarpStr;
+uniform int   uBiWarpXOn;
+uniform int   uBiWarpYOn;
+uniform int   uDirWarpEnabled;
 
 // ── Copy layer arrays (shape*6+copy) ─────────
 uniform int   uCopyCount[3];
@@ -71,6 +78,16 @@ vec2 warpUV(vec2 uv, float strength) {
   );
 }
 
+vec2 biWarpUV(vec2 uv, float str, int xOn, int yOn) {
+  if (str < 0.5) return uv;
+  float w = str * 0.003;
+  float wx = float(xOn) * (snoise(uv * 2.0)
+                          + 0.5 * snoise(uv * 4.0 + vec2(17.3, 5.1)));
+  float wy = float(yOn) * (snoise(uv * 2.0 + vec2(91.7, 45.2))
+                          + 0.5 * snoise(uv * 4.0 + vec2(33.1, 88.4)));
+  return uv + vec2(wx, wy) * w;
+}
+
 // ─────────────────────────────────────────────
 // SDF + gradient
 // ─────────────────────────────────────────────
@@ -78,6 +95,38 @@ float sphereSDF(vec2 uv, vec2 center, float radius, float shapeAspect) {
   float dx = (uv.x - center.x) * uCanvasAspect / shapeAspect;
   float dy =  uv.y - center.y;
   return sqrt(dx*dx + dy*dy) / radius;
+}
+
+float squareSDF(vec2 uv, vec2 center, float r, float sAspect) {
+  float dx = abs((uv.x - center.x) * uCanvasAspect / sAspect) / r;
+  float dy = abs(uv.y - center.y) / r;
+  return max(dx, dy);
+}
+
+float diamondSDF(vec2 uv, vec2 center, float r, float sAspect) {
+  float dx = abs((uv.x - center.x) * uCanvasAspect / sAspect) / r;
+  float dy = abs(uv.y - center.y) / r;
+  return dx + dy;
+}
+
+float blobSDF(vec2 uv, vec2 center, float r, float sAspect) {
+  vec2 o1 = center + vec2( 0.12 / uCanvasAspect,  0.08) * r;
+  vec2 o2 = center + vec2(-0.10 / uCanvasAspect, -0.09) * r;
+  float d0 = sphereSDF(uv, center, r,        sAspect);
+  float d1 = sphereSDF(uv, o1,    r * 0.75,  sAspect);
+  float d2 = sphereSDF(uv, o2,    r * 0.65,  sAspect);
+  float k  = 0.3;
+  float h1 = clamp(0.5 + 0.5 * (d1 - d0) / k, 0.0, 1.0);
+  float h2 = clamp(0.5 + 0.5 * (d2 - d0) / k, 0.0, 1.0);
+  return min(mix(d1, d0, h1) - k * h1 * (1.0 - h1),
+             mix(d2, d0, h2) - k * h2 * (1.0 - h2));
+}
+
+float shapeSDF(vec2 uv, vec2 center, float r, float sAspect, int type) {
+  if (type == 1) return squareSDF(uv, center, r, sAspect);
+  if (type == 2) return diamondSDF(uv, center, r, sAspect);
+  if (type == 3) return blobSDF(uv, center, r, sAspect);
+  return sphereSDF(uv, center, r, sAspect);
 }
 
 // 3-stop smooth gradient
@@ -131,7 +180,7 @@ float computeGradDist(vec2 uv, vec2 pos, float r, float sAspect, int dir, float 
 
 // Render one copy layer with edge-anchored alignment
 void renderCopy(inout vec3 color, vec2 uv, vec2 pos, float baseR, float sAspect,
-                int copyCount, float spacing, int dir, float angle, int s, int c) {
+                int copyCount, float spacing, int dir, float angle, int s, int c, int shType) {
   if (c >= copyCount) return;
 
   int   idx    = s * 6 + c;
@@ -156,7 +205,7 @@ void renderCopy(inout vec3 color, vec2 uv, vec2 pos, float baseR, float sAspect,
   }
   // dir == 4 (center): no offset
 
-  float sdfDist  = sphereSDF(uv, cPos, cR, sAspect);
+  float sdfDist  = shapeSDF(uv, cPos, cR, sAspect, shType);
   float gradDist = computeGradDist(uv, cPos, cR, sAspect, dir, angle);
   blendElement(color, sdfDist, gradDist, cAlpha);
 }
@@ -179,21 +228,22 @@ void main() {
     float angle     = uCopyDirAngle[s];
 
     vec2 uv = warpUV(vUV, uShapeWarp[s]);
+    uv = biWarpUV(uv, uBiWarpStr, uBiWarpXOn, uBiWarpYOn);
 
-    float baseSDF  = sphereSDF(uv, pos, baseR, sAspect);
+    float baseSDF  = shapeSDF(uv, pos, baseR, sAspect, uShapeType[s]);
     float baseGrad = computeGradDist(uv, pos, baseR, sAspect, dir, angle);
 
     if (uCopyScaleStep >= 1.0) {
       // Copies grow outward → render largest (c=5) first (deepest behind), base on top
       for (int c = 5; c >= 0; c--) {
-        renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, angle, s, c);
+        renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, angle, s, c, uShapeType[s]);
       }
       blendElement(color, baseSDF, baseGrad, 1.0);
     } else {
       // Copies shrink → base behind, copies in front; c=0 (largest copy) rendered last = on top
       blendElement(color, baseSDF, baseGrad, 1.0);
       for (int c = 5; c >= 0; c--) {
-        renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, angle, s, c);
+        renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, angle, s, c, uShapeType[s]);
       }
     }
   }
