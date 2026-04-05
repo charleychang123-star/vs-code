@@ -11,8 +11,9 @@ export const DEFAULT_PARAMS = {
   colorA: '#D98026',
   colorB: '#F9D286',
   colorC: '#FEF6E7',
-  stop1: 0.3,
-  stop2: 0.7,
+  stop1: 0.5,
+  gradientMode: 'radial',   // 'radial' | 'follow' | 'reverse'
+  edgeSoft: 20,             // 0 = crisp edge, 100 = full cloud feather
   // Global texture
   grain: 15,
   // Global sphere params (apply to all active shapes)
@@ -22,20 +23,21 @@ export const DEFAULT_PARAMS = {
   // Global copy layer params
   copyCount: 0,
   copySpacing: 0.15,
-  copyDir: 'bottom',        // 'top' | 'bottom' | 'left' | 'right'
-  copyScaleStep: 130,       // each copy is this % of the previous (multiplicative)
-  copyOpacityStep: 70,      // each copy opacity is this % of the previous
+  copyDir: 'bottom',         // 'top' | 'bottom' | 'left' | 'right' | 'center'
+  copyScaleStep: 130,
+  copyOpacityStep: 70,
   // Global blur params
   blurEnabled: false,
-  blurDir: 'bottom',
   blurStr: 5,
-  // Per-shape: position only
+  // Per-shape: position + optional flip
   shapes: {
     A: { active: true,  posX: 0.5, posY: 0.3 },
-    B: { active: false, posX: 0.3, posY: 0.65 },
-    C: { active: false, posX: 0.7, posY: 0.65 },
+    B: { active: false, posX: 0.3, posY: 0.65, flip: false },
+    C: { active: false, posX: 0.7, posY: 0.65, flip: false },
   },
 };
 
-export const DIR_OPTIONS = ['top', 'bottom', 'left', 'right'];
-export const DIR_LABELS  = { top: '由上', bottom: '由下', left: '由左', right: '由右' };
+export const DIR_OPTIONS = ['top', 'bottom', 'left', 'right', 'center'];
+export const DIR_LABELS  = { top: '由上', bottom: '由下', left: '由左', right: '由右', center: '中間' };
+// Flip map: top↔bottom, left↔right, center stays
+export const FLIP_DIR    = [1, 0, 3, 2, 4];

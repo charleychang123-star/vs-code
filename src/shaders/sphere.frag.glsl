@@ -9,7 +9,8 @@ uniform vec3  uColorA;
 uniform vec3  uColorB;
 uniform vec3  uColorC;
 uniform float uStop1;
-uniform float uStop2;   // reserved for future 4-stop use
+uniform int   uGradientMode;  // 0=radial  1=follow copyDir  2=reverse (180° flip)
+uniform float uEdgeSoft;      // 0=crisp edge  1=full cloud feather
 
 // ── Global ───────────────────────────────────
 uniform float uGrain;
@@ -17,18 +18,18 @@ uniform float uCanvasAspect;
 
 // ── Shape arrays (up to 3) ───────────────────
 uniform int   uShapeCount;
-uniform vec2  uShapePos[3];      // UV [0,1] x [0,1]
-uniform float uShapeRadius[3];   // screen-height proportion units
-uniform float uShapeAspect[3];   // shape stretch (1=circle, 2=wide ellipse)
-uniform float uShapeWarp[3];     // 0–100
+uniform vec2  uShapePos[3];
+uniform float uShapeRadius[3];
+uniform float uShapeAspect[3];
+uniform float uShapeWarp[3];
 
-// ── Copy layer arrays (flattened [shape*3+copy]) ─
+// ── Copy layer arrays (shape*6+copy) ─────────
 uniform int   uCopyCount[3];
 uniform float uCopySpacing[3];
-uniform int   uCopyDir[3];       // 0=top 1=bottom 2=left 3=right
-uniform float uCopyScale[9];     // scale multiplier
-uniform float uCopyOpacity[9];   // opacity 0–1
-uniform float uCopyScaleStep;    // > 1.0 = copies grow; < 1.0 = copies shrink (z-order)
+uniform int   uCopyDir[3];       // 0=top 1=bottom 2=left 3=right 4=center
+uniform float uCopyScale[18];
+uniform float uCopyOpacity[18];
+uniform float uCopyScaleStep;    // >1 = copies grow; <1 = copies shrink
 
 // ─────────────────────────────────────────────
 // Simplex noise (for warp)
@@ -64,7 +65,7 @@ vec2 warpUV(vec2 uv, float strength) {
   if (strength < 0.5) return uv;
   float w = strength * 0.0025;
   return vec2(
-    uv.x + snoise(uv * 2.5)               * w,
+    uv.x + snoise(uv * 2.5)                      * w,
     uv.y + snoise(uv * 2.5 + vec2(73.156, 31.4)) * w
   );
 }
@@ -78,39 +79,70 @@ float sphereSDF(vec2 uv, vec2 center, float radius, float shapeAspect) {
   return sqrt(dx*dx + dy*dy) / radius;
 }
 
-// Smooth 3-stop gradient: A at center (dist=0), B peaks at uStop1, C at edge (dist=1)
+// 3-stop smooth gradient
 vec3 gradientMap(float dist) {
   float t  = clamp(dist, 0.0, 1.0);
-  float t1 = smoothstep(0.0, uStop1, t);   // A → B over [0, stop1]
-  float t2 = smoothstep(uStop1, 1.0, t);   // B → C over [stop1, 1]
+  float t1 = smoothstep(0.0, uStop1, t);
+  float t2 = smoothstep(uStop1, 1.0, t);
   return mix(mix(uColorA, uColorB, t1), uColorC, t2);
 }
 
-// Cloud-like soft edge: fades from 50% to 160% of radius so shapes blend softly
-void blendElement(inout vec3 color, float dist, float opacity) {
-  vec3  elemColor = gradientMap(dist);
-  float influence = (1.0 - smoothstep(0.5, 1.6, dist)) * opacity;
+// Directional gradient distance [0,1] along a given direction axis.
+// 0 = warm end (colorA side), 1 = cool/bg end (colorC side).
+float dirGradDist(vec2 uv, vec2 pos, float r, int dir) {
+  float d;
+  if      (dir == 0) d = (pos.y - uv.y) / r;                 // top: warm at bottom
+  else if (dir == 1) d = (uv.y - pos.y) / r;                 // bottom: warm at top
+  else if (dir == 2) d = (pos.x - uv.x) * uCanvasAspect / r; // left: warm at right
+  else if (dir == 3) d = (uv.x - pos.x) * uCanvasAspect / r; // right: warm at left
+  else               return sphereSDF(uv, pos, r, 1.0);       // center: radial fallback
+  return clamp(d * 0.5 + 0.5, 0.0, 1.0);
+}
+
+// Edge blend: edgeSoft=0 → crisp (0.95–1.05), edgeSoft=1 → full cloud (0.5–1.6)
+void blendElement(inout vec3 color, float sdfDist, float gradDist, float opacity) {
+  vec3  elemColor = gradientMap(gradDist);
+  float inner = mix(0.95, 0.5,  uEdgeSoft);
+  float outer = mix(1.05, 1.6,  uEdgeSoft);
+  float influence = (1.0 - smoothstep(inner, outer, sdfDist)) * opacity;
   color = mix(color, elemColor, influence);
 }
 
-// Render one copy layer
+// Return the gradient distance for a given element center + size,
+// respecting the current gradient mode.
+float computeGradDist(vec2 uv, vec2 pos, float r, float sAspect, int dir) {
+  if (uGradientMode == 0) {
+    return sphereSDF(uv, pos, r, sAspect);
+  }
+  // reverse: flip direction axis by XOR with 1 (top↔bottom, left↔right; center stays)
+  int gDir = (uGradientMode == 2 && dir <= 3) ? (dir ^ 1) : dir;
+  return dirGradDist(uv, pos, r, gDir);
+}
+
+// Render one copy layer with edge-anchored alignment
 void renderCopy(inout vec3 color, vec2 uv, vec2 pos, float baseR, float sAspect,
                 int copyCount, float spacing, int dir, int s, int c) {
   if (c >= copyCount) return;
 
-  int   idx    = s * 3 + c;
+  int   idx    = s * 6 + c;
   float cScale = uCopyScale[idx];
   float cAlpha = uCopyOpacity[idx];
   float cR     = baseR * cScale;
 
-  float stepDist = spacing * float(c + 1);
+  // Anchor the edge of each copy at the base edge facing the copy direction.
+  // This ensures all copies align at their nearest edge to the original (spacing=0 stacks neatly).
+  float scaleDiff = cR - baseR;
+  float stepDist  = spacing * float(c + 1);
   vec2  cPos = pos;
-  if      (dir == 0) cPos.y -= stepDist;                   // top
-  else if (dir == 1) cPos.y += stepDist;                   // bottom
-  else if (dir == 2) cPos.x -= stepDist / uCanvasAspect;  // left
-  else               cPos.x += stepDist / uCanvasAspect;  // right
+  if      (dir == 0) { cPos.y -= scaleDiff;                            cPos.y -= stepDist; }
+  else if (dir == 1) { cPos.y += scaleDiff;                            cPos.y += stepDist; }
+  else if (dir == 2) { cPos.x -= scaleDiff * sAspect / uCanvasAspect; cPos.x -= stepDist / uCanvasAspect; }
+  else if (dir == 3) { cPos.x += scaleDiff * sAspect / uCanvasAspect; cPos.x += stepDist / uCanvasAspect; }
+  // dir == 4 (center): cPos = pos, no offset
 
-  blendElement(color, sphereSDF(uv, cPos, cR, sAspect), cAlpha);
+  float sdfDist  = sphereSDF(uv, cPos, cR, sAspect);
+  float gradDist = computeGradDist(uv, cPos, cR, sAspect, dir);
+  blendElement(color, sdfDist, gradDist, cAlpha);
 }
 
 // ─────────────────────────────────────────────
@@ -131,16 +163,19 @@ void main() {
 
     vec2 uv = warpUV(vUV, uShapeWarp[s]);
 
+    float baseSDF  = sphereSDF(uv, pos, baseR, sAspect);
+    float baseGrad = computeGradDist(uv, pos, baseR, sAspect, dir);
+
     if (uCopyScaleStep >= 1.0) {
-      // Copies grow outward → render largest first (behind), base on top
-      for (int c = 2; c >= 0; c--) {
+      // Copies grow outward → render largest (c=5) first (deepest behind), base on top
+      for (int c = 5; c >= 0; c--) {
         renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, s, c);
       }
-      blendElement(color, sphereSDF(uv, pos, baseR, sAspect), 1.0);
+      blendElement(color, baseSDF, baseGrad, 1.0);
     } else {
-      // Copies shrink → base behind, copies in front (smallest = highest index = on top)
-      blendElement(color, sphereSDF(uv, pos, baseR, sAspect), 1.0);
-      for (int c = 0; c <= 2; c++) {
+      // Copies shrink → base behind, copies in front; c=0 (largest copy) rendered last = on top
+      blendElement(color, baseSDF, baseGrad, 1.0);
+      for (int c = 5; c >= 0; c--) {
         renderCopy(color, uv, pos, baseR, sAspect, copyCount, spacing, dir, s, c);
       }
     }

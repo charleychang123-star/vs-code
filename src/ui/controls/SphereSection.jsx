@@ -25,6 +25,13 @@ export default function SphereSection({ params, updateGlobal }) {
         onChange={v => updateGlobal('warp', v)}
         format={v => `${v}%`}
       />
+      <SteppedSlider
+        label="邊緣柔化"
+        stepsKey="edgeSoft"
+        value={params.edgeSoft}
+        onChange={v => updateGlobal('edgeSoft', v)}
+        format={v => `${v}%`}
+      />
     </section>
   );
 }

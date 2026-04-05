@@ -1,8 +1,7 @@
 import SteppedSlider from './SteppedSlider';
-import { DIR_LABELS } from '../../constants/defaults';
 
 export default function BlurSection({ params, updateGlobal }) {
-  const { blurEnabled, blurDir, blurStr } = params;
+  const { blurEnabled, blurStr } = params;
 
   return (
     <section className="panel-section">
@@ -19,30 +18,13 @@ export default function BlurSection({ params, updateGlobal }) {
       </div>
 
       {blurEnabled && (
-        <>
-          <div className="control-row">
-            <label>方向</label>
-            <div className="segmented-control small">
-              {['top', 'bottom', 'left', 'right'].map(d => (
-                <button
-                  key={d}
-                  className={blurDir === d ? 'active' : ''}
-                  onClick={() => updateGlobal('blurDir', d)}
-                >
-                  {DIR_LABELS[d]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <SteppedSlider
-            label="強度"
-            stepsKey="blurStr"
-            value={blurStr}
-            onChange={v => updateGlobal('blurStr', v)}
-            format={v => `${v}`}
-          />
-        </>
+        <SteppedSlider
+          label="強度"
+          stepsKey="blurStr"
+          value={blurStr}
+          onChange={v => updateGlobal('blurStr', v)}
+          format={v => `${v}`}
+        />
       )}
     </section>
   );

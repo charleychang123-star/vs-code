@@ -3,7 +3,10 @@ import ShaderCanvas from './canvas/ShaderCanvas';
 import Panel from './ui/Panel';
 import CanvasSizeToggle from './ui/controls/CanvasSizeToggle';
 import sphereFrag from './shaders/sphere.frag.glsl?raw';
-import { DEFAULT_PARAMS, CANVAS_SIZES, DIR_OPTIONS } from './constants/defaults';
+import { DEFAULT_PARAMS, CANVAS_SIZES, DIR_OPTIONS, FLIP_DIR } from './constants/defaults';
+
+const MAX_COPIES = 6;
+const GRADIENT_MODES = { radial: 0, follow: 1, reverse: 2 };
 
 // ── Helpers ──────────────────────────────────────────
 function hexToGL(hex) {
@@ -21,70 +24,84 @@ function buildUniforms(params) {
     .filter(s => s.active);
   const count = activeShapes.length;
 
-  // Multiplicative copy arrays: copy[i] = step^(i+1)
   const scaleBase = params.copyScaleStep / 100;
   const opacBase  = params.copyOpacityStep / 100;
-  const computedCopyScale   = [1, 2, 3].map(i => Math.pow(scaleBase, i));
-  const computedCopyOpacity = [1, 2, 3].map(i => Math.pow(opacBase, i));
+  // Opacity for copies: c=0 always gets the highest (pow^1), decreasing outward.
+  // For < 100% case, z-order in shader puts c=0 on top — so c=0 being most opaque is correct.
+  const computedCopyScale   = Array.from({ length: MAX_COPIES }, (_, i) => Math.pow(scaleBase, i + 1));
+  const computedCopyOpacity = Array.from({ length: MAX_COPIES }, (_, i) => Math.pow(opacBase, i + 1));
 
-  // Flattened typed arrays for WebGL
-  const shapePos     = new Float32Array(6);
-  const shapeRadius  = new Float32Array(3);
-  const shapeAspect  = new Float32Array(3);
-  const shapeWarp    = new Float32Array(3);
-  const copyCount    = new Int32Array(3);
-  const copySpacing  = new Float32Array(3);
-  const copyDir      = new Int32Array(3);
-  const copyScale    = new Float32Array(9);
-  const copyOpacity  = new Float32Array(9);
-  const blurEnabled  = new Int32Array(3);
-  const blurDir      = new Int32Array(3);
-  const blurStr      = new Float32Array(3);
+  const shapePos       = new Float32Array(6);
+  const shapeRadius    = new Float32Array(3);
+  const shapeAspect    = new Float32Array(3);
+  const shapeWarp      = new Float32Array(3);
+  const copyCount      = new Int32Array(3);
+  const copySpacing    = new Float32Array(3);
+  const copyDir        = new Int32Array(3);
+  const copyScale      = new Float32Array(3 * MAX_COPIES);
+  const copyOpacity    = new Float32Array(3 * MAX_COPIES);
+  const blurEnabled    = new Int32Array(3);
+  const blurDir        = new Int32Array(3);
+  const blurStr        = new Float32Array(3);
+  const shapeMaxRadius = new Float32Array(3);
 
   activeShapes.forEach((s, i) => {
     shapePos[i * 2]     = s.posX;
     shapePos[i * 2 + 1] = s.posY;
-    // All non-position params are global (shared across shapes)
     shapeRadius[i]  = params.radius;
     shapeAspect[i]  = params.aspect;
     shapeWarp[i]    = params.warp;
     copyCount[i]    = params.copyCount;
     copySpacing[i]  = params.copySpacing;
-    copyDir[i]      = DIR_OPTIONS.indexOf(params.copyDir);
-    computedCopyScale.forEach((v, c)   => { copyScale[i * 3 + c]   = v; });
-    computedCopyOpacity.forEach((v, c) => { copyOpacity[i * 3 + c] = v; });
-    blurEnabled[i]  = params.blurEnabled ? 1 : 0;
-    blurDir[i]      = DIR_OPTIONS.indexOf(params.blurDir);
-    blurStr[i]      = params.blurStr;
+
+    const baseDir      = DIR_OPTIONS.indexOf(params.copyDir);
+    const isFlipped    = s.flip === true;
+    const effectiveDir = isFlipped ? FLIP_DIR[baseDir] : baseDir;
+    copyDir[i] = effectiveDir;
+    blurDir[i] = effectiveDir;   // blur always follows copy direction
+
+    computedCopyScale.forEach((v, c)   => { copyScale[i * MAX_COPIES + c]   = v; });
+    computedCopyOpacity.forEach((v, c) => { copyOpacity[i * MAX_COPIES + c] = v; });
+
+    blurEnabled[i] = params.blurEnabled ? 1 : 0;
+    blurStr[i]     = params.blurStr;
+
+    // Bounding radius for blur masking: covers base + largest copy + spacing offsets
+    const maxCopyScale = params.copyCount > 0 ? Math.pow(scaleBase, params.copyCount) : 1;
+    const maxR = Math.max(params.radius, params.radius * maxCopyScale)
+               + params.copyCount * params.copySpacing;
+    shapeMaxRadius[i] = maxR;
   });
 
   const sceneUniforms = {
-    uColorA:        { type: '3f',  value: hexToGL(params.colorA) },
-    uColorB:        { type: '3f',  value: hexToGL(params.colorB) },
-    uColorC:        { type: '3f',  value: hexToGL(params.colorC) },
-    uStop1:         { type: '1f',  value: params.stop1 },
-    uStop2:         { type: '1f',  value: params.stop2 },
-    uGrain:         { type: '1f',  value: params.grain },
-    uShapeCount:    { type: '1i',  value: count },
-    uShapePos:      { type: '2fv', value: shapePos },
-    uShapeRadius:   { type: '1fv', value: shapeRadius },
-    uShapeAspect:   { type: '1fv', value: shapeAspect },
-    uShapeWarp:     { type: '1fv', value: shapeWarp },
-    uCopyCount:     { type: '1iv', value: copyCount },
-    uCopySpacing:   { type: '1fv', value: copySpacing },
-    uCopyDir:       { type: '1iv', value: copyDir },
-    uCopyScale:     { type: '1fv', value: copyScale },
-    uCopyOpacity:   { type: '1fv', value: copyOpacity },
-    uCopyScaleStep: { type: '1f',  value: scaleBase },
+    uColorA:         { type: '3f',  value: hexToGL(params.colorA) },
+    uColorB:         { type: '3f',  value: hexToGL(params.colorB) },
+    uColorC:         { type: '3f',  value: hexToGL(params.colorC) },
+    uStop1:          { type: '1f',  value: params.stop1 },
+    uGradientMode:   { type: '1i',  value: GRADIENT_MODES[params.gradientMode] ?? 0 },
+    uEdgeSoft:       { type: '1f',  value: params.edgeSoft / 100 },
+    uGrain:          { type: '1f',  value: params.grain },
+    uShapeCount:     { type: '1i',  value: count },
+    uShapePos:       { type: '2fv', value: shapePos },
+    uShapeRadius:    { type: '1fv', value: shapeRadius },
+    uShapeAspect:    { type: '1fv', value: shapeAspect },
+    uShapeWarp:      { type: '1fv', value: shapeWarp },
+    uCopyCount:      { type: '1iv', value: copyCount },
+    uCopySpacing:    { type: '1fv', value: copySpacing },
+    uCopyDir:        { type: '1iv', value: copyDir },
+    uCopyScale:      { type: '1fv', value: copyScale },
+    uCopyOpacity:    { type: '1fv', value: copyOpacity },
+    uCopyScaleStep:  { type: '1f',  value: scaleBase },
   };
 
   const blurUniforms = {
-    uShapeCount:  { type: '1i',  value: count },
-    uShapePos:    { type: '2fv', value: shapePos },
-    uShapeRadius: { type: '1fv', value: shapeRadius },
-    uBlurEnabled: { type: '1iv', value: blurEnabled },
-    uBlurDir:     { type: '1iv', value: blurDir },
-    uBlurStr:     { type: '1fv', value: blurStr },
+    uShapeCount:     { type: '1i',  value: count },
+    uShapePos:       { type: '2fv', value: shapePos },
+    uShapeRadius:    { type: '1fv', value: shapeRadius },
+    uShapeMaxRadius: { type: '1fv', value: shapeMaxRadius },
+    uBlurEnabled:    { type: '1iv', value: blurEnabled },
+    uBlurDir:        { type: '1iv', value: blurDir },
+    uBlurStr:        { type: '1fv', value: blurStr },
   };
 
   const hasBlur = params.blurEnabled && count > 0;

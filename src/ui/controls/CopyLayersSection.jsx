@@ -1,6 +1,8 @@
 import SteppedSlider from './SteppedSlider';
 import { DIR_LABELS } from '../../constants/defaults';
 
+const DIR_OPTIONS_UI = ['top', 'bottom', 'left', 'right', 'center'];
+
 export default function CopyLayersSection({ params, updateGlobal }) {
   const { copyCount, copyDir, copySpacing, copyScaleStep, copyOpacityStep } = params;
 
@@ -8,11 +10,11 @@ export default function CopyLayersSection({ params, updateGlobal }) {
     <section className="panel-section">
       <h3>Copy Layers</h3>
 
-      {/* Copy count */}
+      {/* Copy count: 0–6 */}
       <div className="control-row">
         <label>層數</label>
         <div className="segmented-control small">
-          {[0, 1, 2, 3].map(n => (
+          {[0, 1, 2, 3, 4, 5, 6].map(n => (
             <button
               key={n}
               className={copyCount === n ? 'active' : ''}
@@ -26,11 +28,11 @@ export default function CopyLayersSection({ params, updateGlobal }) {
 
       {copyCount > 0 && (
         <>
-          {/* Direction */}
+          {/* Direction — includes "中間" (center) */}
           <div className="control-row">
             <label>方向</label>
             <div className="segmented-control small">
-              {['top', 'bottom', 'left', 'right'].map(d => (
+              {DIR_OPTIONS_UI.map(d => (
                 <button
                   key={d}
                   className={copyDir === d ? 'active' : ''}
@@ -42,7 +44,7 @@ export default function CopyLayersSection({ params, updateGlobal }) {
             </div>
           </div>
 
-          {/* Spacing */}
+          {/* Spacing (0 = all anchored at edge, stack neatly) */}
           <SteppedSlider
             label="間距"
             stepsKey="spacing"
@@ -51,7 +53,7 @@ export default function CopyLayersSection({ params, updateGlobal }) {
             format={v => v.toFixed(2)}
           />
 
-          {/* Step multipliers — one value governs all copies multiplicatively */}
+          {/* Multiplicative step values */}
           <SteppedSlider
             label="尺寸步進"
             stepsKey="copyScaleStep"

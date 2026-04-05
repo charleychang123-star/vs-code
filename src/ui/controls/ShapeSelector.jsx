@@ -9,6 +9,7 @@ export default function ShapeSelector({ params, updateGlobal, updateShape }) {
       <div className="shape-tabs">
         {LABELS.map((key) => {
           const shape = params.shapes[key];
+          const canFlip = key === 'B' || key === 'C';
           return (
             <div key={key} className={`shape-tab ${selected === key ? 'selected' : ''}`}>
               <button
@@ -24,6 +25,15 @@ export default function ShapeSelector({ params, updateGlobal, updateShape }) {
               >
                 {shape.active ? '●' : '○'}
               </button>
+              {canFlip && (
+                <button
+                  className={`shape-tab-flip ${shape.flip ? 'on' : 'off'}`}
+                  onClick={() => updateShape(key, 'flip', !shape.flip)}
+                  title={shape.flip ? '已翻轉方向（點擊恢復）' : '翻轉複製方向 180°'}
+                >
+                  ↔
+                </button>
+              )}
             </div>
           );
         })}
