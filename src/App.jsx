@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import ShaderCanvas from './canvas/ShaderCanvas';
 import Panel from './ui/Panel';
 import CanvasSizeToggle from './ui/controls/CanvasSizeToggle';
+import ShapePlacementMap from './ui/controls/ShapePlacementMap';
 import sphereFrag from './shaders/sphere.frag.glsl?raw';
 import { DEFAULT_PARAMS, CANVAS_SIZES, DIR_OPTIONS, FLIP_DIR } from './constants/defaults';
 
@@ -148,14 +149,6 @@ export default function App() {
     }));
   }, []);
 
-  // ── Canvas click → place selected shape (no auto-activate) ──
-  const handleCanvasClick = useCallback((x, y) => {
-    const sel = params.selectedShape;
-    if (!sel) return;
-    updateShape(sel, 'posX', x);
-    updateShape(sel, 'posY', y);
-  }, [params.selectedShape, updateShape]);
-
   // ── Export ───────────────────────────────────────────
   const handleExport = useCallback(() => {
     const wrapper = document.querySelector('.canvas-wrapper');
@@ -194,13 +187,18 @@ export default function App() {
             sceneUniforms={sceneUniforms}
             blurUniforms={blurUniforms}
             hasBlur={hasBlur}
-            onCanvasClick={handleCanvasClick}
           />
         </div>
 
         <CanvasSizeToggle
           current={params.canvasSize}
           onChange={v => updateGlobal('canvasSize', v)}
+        />
+
+        <ShapePlacementMap
+          params={params}
+          updateShape={updateShape}
+          updateGlobal={updateGlobal}
         />
       </div>
     </div>

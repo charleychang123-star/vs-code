@@ -38,11 +38,6 @@ export default function ShapeSelector({ params, updateGlobal, updateShape }) {
           );
         })}
       </div>
-      {selected && (
-        <p className="shape-hint">
-          點擊畫布設定「形狀 {selected}」的位置
-        </p>
-      )}
     </section>
   );
 }

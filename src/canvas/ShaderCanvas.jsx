@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useWebGL } from './useWebGL';
 import blurHSrc from '../shaders/blur-h.frag.glsl?raw';
 import blurVSrc from '../shaders/blur-v.frag.glsl?raw';
@@ -8,7 +8,6 @@ export default function ShaderCanvas({
   sceneUniforms,
   blurUniforms,
   hasBlur,
-  onCanvasClick,
 }) {
   const { canvasRef, render, getCanvas } = useWebGL({
     sceneFragSrc: fragmentSource,
@@ -35,24 +34,14 @@ export default function ShaderCanvas({
     return () => cancelAnimationFrame(rafId);
   }, [render, sceneUniforms, blurUniforms, hasBlur, canvasRef]);
 
-  // Click → UV coordinates [0,1]×[0,1]
-  const handleClick = useCallback((e) => {
-    if (!onCanvasClick) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    onCanvasClick(x, y);
-  }, [onCanvasClick]);
-
   return (
     <canvas
       ref={canvasRef}
-      onClick={handleClick}
       style={{
         width: '100%',
         height: '100%',
         display: 'block',
-        cursor: onCanvasClick ? 'crosshair' : 'default',
+        cursor: 'default',
       }}
     />
   );
